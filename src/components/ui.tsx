@@ -4,9 +4,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
+  TextInput,
   View,
   type StyleProp,
+  type TextInputProps,
   type TextProps,
   type TextStyle,
   type ViewStyle,
@@ -299,6 +302,132 @@ export function Feedback({ text, ok }: { text: string | null; ok: boolean | null
         {text}
       </T>
     </View>
+  );
+}
+
+/* ---------- Forms and class chrome ---------- */
+
+export const inputStyle = {
+  backgroundColor: colors.bg,
+  borderWidth: 2,
+  borderColor: colors.border,
+  borderRadius: radius.md,
+  paddingHorizontal: 14,
+  height: 52,
+  color: colors.text,
+  fontFamily: fonts.medium,
+  fontSize: 16,
+} as const;
+
+export function Field({
+  label,
+  error,
+  note,
+  style,
+  ...input
+}: TextInputProps & { label: string; error?: boolean; note?: string }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <T size={13} color={colors.soft}>
+        {label}
+      </T>
+      <TextInput
+        placeholderTextColor={colors.dim}
+        autoCorrect={false}
+        {...input}
+        style={[inputStyle, error && { borderColor: colors.red }, style]}
+      />
+      {note && (
+        <T size={12} color={colors.muted}>
+          {note}
+        </T>
+      )}
+    </View>
+  );
+}
+
+export function ErrorBox({ text }: { text: string | null | undefined }) {
+  if (!text) return null;
+  return (
+    <View
+      accessibilityRole="alert"
+      style={{ borderWidth: 2, borderColor: colors.red, borderRadius: radius.md, backgroundColor: colors.bg, padding: 12 }}>
+      <T size={14} weight="medium" color={colors.redSoft}>
+        {text}
+      </T>
+    </View>
+  );
+}
+
+/** "Code — Profile — Joined" style progress line. */
+export function Steps({ steps, current }: { steps: string[]; current: number }) {
+  return (
+    <Row gap={8} style={{ paddingTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+      {steps.map((s, i) => (
+        <Row key={s} gap={8}>
+          {i > 0 && <View style={{ width: 16, height: 1, backgroundColor: colors.dim }} />}
+          <T size={13} weight={i === current ? 'bold' : 'regular'} color={i === current ? colors.yellow : colors.muted}>
+            {s}
+          </T>
+        </Row>
+      ))}
+    </Row>
+  );
+}
+
+export function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <Row style={{ justifyContent: 'space-between' }}>
+      <T style={{ flex: 1 }}>{label}</T>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        accessibilityLabel={label}
+        trackColor={{ true: colors.yellow, false: colors.border }}
+        thumbColor={colors.text}
+      />
+    </Row>
+  );
+}
+
+/** A class code drawn as one yellow tile per character. */
+export function CodeTiles({ code, size = 'lg' }: { code: string; size?: 'lg' | 'sm' }) {
+  const lg = size === 'lg';
+  return (
+    <View
+      accessible
+      accessibilityLabel={`Class code ${code.split('').join(' ')}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: lg ? 6 : 4 }}>
+      {code.split('').map((ch, i) => (
+        <View
+          key={i}
+          style={{
+            width: lg ? 44 : 22,
+            height: lg ? 56 : 28,
+            borderRadius: lg ? radius.md : 6,
+            borderWidth: 2,
+            borderColor: colors.yellow,
+            backgroundColor: colors.bg,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <Pixel size={lg ? 20 : 10}>{ch}</Pixel>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Logo + "QUIZ ARCADE" header row used on the class screens. */
+export function BrandHeader({ right }: { right?: ReactNode }) {
+  return (
+    <Row style={{ justifyContent: 'space-between' }}>
+      <Row gap={10}>
+        <PixelArt rows={[...art.logo.rows]} palette={art.logo.palette} size={3} />
+        <Pixel size={16}>QUIZ ARCADE</Pixel>
+      </Row>
+      {right}
+    </Row>
   );
 }
 

@@ -1,25 +1,28 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { art, PixelArt } from '@/components/pixel';
-import { useAnswers } from '@/components/use-answers';
+import { NextQuestion, useQuiz } from '@/components/use-quiz';
 import { Button, Feedback, Hint, MiniStat, QuestionCard, Row, Screen, T, TopBar } from '@/components/ui';
-import { questions } from '@/data/mock';
 import { colors, radius } from '@/theme';
 
-const q = questions.flappy;
 // Stepped bands fake the sky gradient from the design, and fit the pixel look.
 const sky = ['#28388A', '#2F449A', '#3A52A8', '#4561B6', '#5070C3', '#5B7ECF'];
 const HEIGHT = 440;
 const GROUND = 64;
+const BAR = 22;
 
 export default function FlappyQuiz() {
-  const { used, score, last, pick, reset } = useAnswers(q.options);
-  const [pipes, setPipes] = useState(2);
+  const quiz = useQuiz();
+  const { options, used, answered, score, last, pick } = quiz;
+  const [pipes, setPipes] = useState(0);
   const [birdY, setBirdY] = useState(150);
 
-  const gapH = (HEIGHT - GROUND - 4 * 22) / 3;
+  // One gap per answer, with a pipe segment above, between and below them.
+  const gaps = options.length;
+  const gapH = (HEIGHT - GROUND - (gaps + 1) * BAR) / gaps;
+
+  if (!quiz.ready) return null;
 
   return (
     <Screen>
@@ -34,7 +37,7 @@ export default function FlappyQuiz() {
           </Row>
         }
       />
-      <QuestionCard eyebrow={`Question ${q.n} of 10`} text={q.text} />
+      <QuestionCard eyebrow={`${quiz.title} · Question ${quiz.n} of ${quiz.total}`} text={quiz.question.text} />
 
       <Pressable
         accessibilityLabel="Flap"
@@ -58,18 +61,19 @@ export default function FlappyQuiz() {
           )}
         </View>
 
-        {/* pipe with 3 answer gaps */}
+        {/* pipe with one gap per answer */}
         <View style={{ position: 'absolute', right: 24, top: 0, width: 84, height: HEIGHT - GROUND }}>
-          {q.options.map((o, i) => {
-            const top = 22 + i * (gapH + 22);
+          {options.map((o, i) => {
+            const top = BAR + i * (gapH + BAR);
             const picked = used.has(o.id);
+            const reveal = answered && !picked && o.ok;
             return (
               <Pressable
                 key={o.id}
                 accessibilityRole="button"
                 accessibilityLabel={`Fly through gap ${o.label}`}
+                disabled={answered}
                 onPress={() => {
-                  if (used.has(o.id)) return;
                   if (pick(o)) setPipes((p) => p + 1);
                 }}
                 style={{
@@ -82,7 +86,7 @@ export default function FlappyQuiz() {
                   justifyContent: 'center',
                   borderWidth: 2,
                   borderStyle: 'dashed',
-                  borderColor: picked ? (o.ok ? colors.green : colors.red) : 'rgba(255,255,255,0.35)',
+                  borderColor: picked ? (o.ok ? colors.green : colors.red) : reveal ? colors.green : 'rgba(255,255,255,0.35)',
                   borderRadius: 6,
                 }}>
                 <View style={{ backgroundColor: colors.card, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 2 }}>
@@ -93,10 +97,10 @@ export default function FlappyQuiz() {
               </Pressable>
             );
           })}
-          {[0, 1, 2, 3].map((i) => (
+          {Array.from({ length: gaps + 1 }, (_, i) => (
             <View
               key={i}
-              style={{ position: 'absolute', left: 0, right: 0, top: i * (gapH + 22), height: 22, backgroundColor: colors.green, borderWidth: 2, borderColor: '#2E9E5B' }}
+              style={{ position: 'absolute', left: 0, right: 0, top: i * (gapH + BAR), height: BAR, backgroundColor: colors.green, borderWidth: 2, borderColor: '#2E9E5B' }}
             />
           ))}
         </View>
@@ -109,23 +113,9 @@ export default function FlappyQuiz() {
         </View>
       </Pressable>
 
-      <Hint>Tap to flap. Each pipe has 3 gaps, only one is the right answer. Tap a gap in this prototype.</Hint>
-      <Row>
-        <Button
-          label="Try again"
-          variant="secondary"
-          style={{ flex: 1 }}
-          onPress={() => {
-            reset();
-            setBirdY(150);
-          }}
-        />
-        <Button
-          label="See results"
-          style={{ flex: 1 }}
-          onPress={() => router.push({ pathname: '/results', params: { game: 'Flappy Quiz', score: String(score) } })}
-        />
-      </Row>
+      <NextQuestion quiz={quiz} game="Flappy Quiz" onNext={() => setBirdY(150)} />
+      <Hint>Tap to flap. Each pipe has {gaps} gaps, only one is the right answer. Tap a gap in this prototype.</Hint>
+      <Button label="End run" variant="secondary" onPress={() => quiz.showResults('Flappy Quiz')} />
     </Screen>
   );
 }

@@ -1,9 +1,8 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 
 import { PixelArt } from '@/components/pixel';
-import { useAnswers } from '@/components/use-answers';
+import { NextQuestion, useQuiz } from '@/components/use-quiz';
 import {
   Button,
   Card,
@@ -17,10 +16,8 @@ import {
   T,
   TopBar,
 } from '@/components/ui';
-import { questions } from '@/data/mock';
 import { colors, radius } from '@/theme';
 
-const q = questions.tetris;
 const COLS = 10;
 const ROWS = 16;
 const DANGER_ROW = 6; // rows above this index are the danger zone
@@ -49,22 +46,30 @@ const startStack = [
 export default function TetrisQuiz() {
   const { width } = useWindowDimensions();
   const cell = Math.floor(Math.min(width - 36, 340) / COLS);
-  const { used, score, last, pick } = useAnswers(q.options);
+  const quiz = useQuiz();
+  const { options, used, answered, score, last, pick } = quiz;
   const [stack, setStack] = useState(startStack);
-  const [lines, setLines] = useState(4);
-  const [level, setLevel] = useState(3);
+  const [lines, setLines] = useState(0);
+  const [level, setLevel] = useState(1);
 
-  const solved = q.options.some((o) => o.ok && used.has(o.id));
+  const solved = options.some((o) => o.ok && used.has(o.id));
   const board = [...Array(ROWS - stack.length).fill('.'.repeat(COLS)), ...stack];
 
   function answer(id: string) {
-    const o = q.options.find((x) => x.id === id)!;
-    if (used.has(id) || solved) return;
+    const o = options.find((x) => x.id === id)!;
+    if (answered) return;
     if (pick(o)) {
       setStack((s) => s.slice(0, -2));
       setLines((l) => l + 2);
     } else setLevel((l) => l + 1);
   }
+
+  // Blocks keep falling between questions: a low stack builds back up for the next one.
+  function nextStack() {
+    setStack((s) => (s.length < 6 ? startStack : s));
+  }
+
+  if (!quiz.ready) return null;
 
   return (
     <Screen>
@@ -90,29 +95,34 @@ export default function TetrisQuiz() {
 
       <Card borderColor={solved ? colors.green : colors.red} style={{ gap: 10 }}>
         <Pixel size={11} color={solved ? colors.green : colors.red}>
-          {solved ? 'ROWS CLEARED!' : 'STACK TOO HIGH!'}
+          {solved ? 'ROWS CLEARED!' : answered ? 'NO CLEAR!' : 'STACK TOO HIGH!'}
         </Pixel>
         <T size={14} color={colors.soft}>
           The game pauses. Answer right to clear the 2 bottom rows.
         </T>
-        <Eyebrow>Question {q.n} of 10</Eyebrow>
+        <Eyebrow>
+          {quiz.title} · Question {quiz.n} of {quiz.total}
+        </Eyebrow>
         <T size={18} weight="bold">
-          {q.text}
+          {quiz.question.text}
         </T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          {q.options.map((o) => {
+          {options.map((o) => {
             const picked = used.has(o.id);
+            const reveal = answered && !picked && o.ok;
             return (
               <Pressable
                 key={o.id}
                 accessibilityRole="button"
+                disabled={answered}
                 onPress={() => answer(o.id)}
                 style={{
                   width: '47%',
                   minHeight: 48,
                   borderRadius: radius.md,
                   borderWidth: 2,
-                  borderColor: picked ? (o.ok ? colors.green : colors.red) : colors.border,
+                  borderColor: picked ? (o.ok ? colors.green : colors.red) : reveal ? colors.green : colors.border,
+                  opacity: answered && !picked && !o.ok ? 0.5 : 1,
                   backgroundColor: colors.bg,
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -126,6 +136,7 @@ export default function TetrisQuiz() {
         </View>
         <Feedback text={last?.text ?? null} ok={last?.ok ?? null} />
       </Card>
+      <NextQuestion quiz={quiz} game="Tetris Quiz" onNext={nextStack} />
 
       <Row style={{ alignItems: 'stretch' }}>
         <Card style={{ flex: 1, gap: 8, padding: 14 }}>
@@ -151,14 +162,10 @@ export default function TetrisQuiz() {
           style={{ flex: 1 }}
           onPress={() => {
             setStack(startStack);
-            setLines(4);
+            setLines(0);
           }}
         />
-        <Button
-          label="See results"
-          style={{ flex: 1 }}
-          onPress={() => router.push({ pathname: '/results', params: { game: 'Tetris Quiz', score: String(score) } })}
-        />
+        <Button label="End run" style={{ flex: 1 }} onPress={() => quiz.showResults('Tetris Quiz')} />
       </Row>
     </Screen>
   );

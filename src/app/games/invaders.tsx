@@ -1,21 +1,21 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { art, PixelArt } from '@/components/pixel';
-import { useAnswers } from '@/components/use-answers';
+import { NextQuestion, useQuiz } from '@/components/use-quiz';
 import { Button, Feedback, Hint, MiniStat, QuestionCard, Row, Screen, T, TopBar } from '@/components/ui';
-import { questions } from '@/data/mock';
 import { colors, radius } from '@/theme';
 
-const q = questions.invaders;
 const stars = [
   [8, 6], [82, 4], [62, 22], [16, 48], [88, 40], [40, 60], [70, 70], [10, 80],
 ];
 
 export default function InvadersQuiz() {
-  const { used, score, last, pick } = useAnswers(q.options);
-  const [lives, setLives] = useState(2);
+  const quiz = useQuiz();
+  const { options, used, answered, score, last, pick } = quiz;
+  const [lives, setLives] = useState(3);
+
+  if (!quiz.ready) return null;
 
   return (
     <Screen>
@@ -25,12 +25,12 @@ export default function InvadersQuiz() {
         backLabel="Back to arcade"
         right={
           <Row>
-            <MiniStat label="Wave" value={2} color={colors.cyan} />
+            <MiniStat label="Wave" value={quiz.n} color={colors.cyan} />
             <MiniStat label="Score" value={score} />
           </Row>
         }
       />
-      <QuestionCard eyebrow={`Question ${q.n} of 10`} text={q.text} />
+      <QuestionCard eyebrow={`${quiz.title} · Question ${quiz.n} of ${quiz.total}`} text={quiz.question.text} />
 
       <View
         style={{
@@ -52,19 +52,20 @@ export default function InvadersQuiz() {
 
         {/* aliens carrying answers */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', rowGap: 18 }}>
-          {q.options.map((o) => {
+          {options.map((o) => {
             const hit = used.has(o.id);
+            const out = answered && !hit;
             return (
               <Pressable
                 key={o.id}
                 accessibilityRole="button"
                 accessibilityLabel={`Shoot alien ${o.label}`}
-                disabled={hit}
+                disabled={answered}
                 onPress={() => {
                   if (!pick(o)) setLives((l) => Math.max(0, l - 1));
                 }}
-                style={{ alignItems: 'center', gap: 6, width: '45%', opacity: hit ? (o.ok ? 0 : 0.35) : 1 }}>
-                <PixelArt rows={[...art.alien.rows]} palette={{ P: hit ? colors.dim : colors.purple }} size={4} />
+                style={{ alignItems: 'center', gap: 6, width: '45%', opacity: hit ? (o.ok ? 0 : 0.35) : out && !o.ok ? 0.5 : 1 }}>
+                <PixelArt rows={[...art.alien.rows]} palette={{ P: hit || (out && !o.ok) ? colors.dim : out ? colors.green : colors.purple }} size={4} />
                 <View style={{ paddingHorizontal: 10, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.card }}>
                   <T weight="bold">{o.label}</T>
                 </View>
@@ -86,13 +87,11 @@ export default function InvadersQuiz() {
         </View>
       </View>
 
+      <NextQuestion quiz={quiz} game="Space Invaders Quiz" />
       <Hint>Move by dragging the ship. Tap an alien in this prototype to shoot it.</Hint>
       <Row style={{ justifyContent: 'space-between' }}>
         <T>Shields 3 · Lives {lives}</T>
-        <Button
-          label="Finish wave"
-          onPress={() => router.push({ pathname: '/results', params: { game: 'Space Invaders Quiz', score: String(score) } })}
-        />
+        <Button label="End run" variant="secondary" onPress={() => quiz.showResults('Space Invaders Quiz')} />
       </Row>
     </Screen>
   );

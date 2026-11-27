@@ -1,166 +1,200 @@
+import { useLocalSearchParams } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Pressable, Share, Switch, TextInput, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
+import { useUser } from '@/components/auth';
+import { iconByName } from '@/components/classes';
 import { PlayerIcon } from '@/components/pixel';
-import { Button, Card, Chip, Eyebrow, LinkText, Pixel, Row, Screen, T, TopBar } from '@/components/ui';
-import { hostGames, playerIcons, quizSets } from '@/data/mock';
-import { colors, fonts, radius } from '@/theme';
+import { Button, Card, Chip, CodeTiles, Eyebrow, Pixel, Row, Screen, T, Toggle, TopBar } from '@/components/ui';
+import { hostGames } from '@/data/mock';
+import { useLiveQuery } from '@/db/live';
+import { classMembers, endLiveGame, getLiveGame, quizSets, startLiveGame, teacherClasses } from '@/db/queries';
+import { colors, radius } from '@/theme';
 
-const expiries = ['15 minutes', '30 minutes', '1 hour'];
-// No 0/O or 1/I so codes are easy to read off a projector.
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-function makeCode() {
-  return Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
-}
+const gameIds: Record<string, string> = {
+  Snake: 'snake',
+  Invaders: 'invaders',
+  'Whack a Mole': 'mole',
+  Flappy: 'flappy',
+  Tetris: 'tetris',
+  'Student choice': 'choice',
+};
+const gameLabel = (id: string) => Object.keys(gameIds).find((k) => gameIds[k] === id) ?? id;
 
 export default function HostGame() {
-  const [set, setSet] = useState(quizSets[0]);
+  const db = useSQLiteContext();
+  const user = useUser();
+  const params = useLocalSearchParams<{ classId?: string }>();
+  const [picked, setPicked] = useState<number | null>(params.classId ? Number(params.classId) : null);
+  const [setId, setSetId] = useState<number | null>(null);
   const [game, setGame] = useState('Snake');
-  const [expiry, setExpiry] = useState('30 minutes');
-  const [maxPlayers, setMaxPlayers] = useState('40');
   const [unique, setUnique] = useState(true);
   const [filter, setFilter] = useState(true);
-  const [code, setCode] = useState<string | null>(null);
-  const [locked, setLocked] = useState(false);
-  const [players, setPlayers] = useState(() =>
-    playerIcons.slice(0, 5).map((ic, i) => ({ ...ic, id: i, nick: `[nickname ${i + 1}]` })),
-  );
+
+  const classes = useLiveQuery(`teacher-classes:${user.id}`, (d) => teacherClasses(d, user.id));
+  const cls = classes?.find((c) => c.id === picked) ?? classes?.[0];
+
+  const detail = useLiveQuery(`host:${cls?.id ?? 0}`, async (d) => {
+    if (!cls) return { sets: [], members: [], live: null };
+    const [sets, members, live] = await Promise.all([quizSets(d, cls.id), classMembers(d, cls.id), getLiveGame(d, cls.id)]);
+    return { sets, members, live };
+  });
+
+  const sets = detail?.sets ?? [];
+  const members = detail?.members ?? [];
+  const live = detail?.live ?? null;
+  const set = sets.find((s) => s.id === setId) ?? sets[0];
 
   return (
     <Screen>
       <TopBar
         title="HOST A GAME"
         color={colors.yellow}
-        backLabel="Back to teacher panel"
+        backLabel="Back"
         right={
           <T size={13} color={colors.muted}>
-            [Teacher name]
+            {user.full_name}
           </T>
         }
       />
 
-      {/* Code display */}
-      <Card style={{ gap: 12, alignItems: 'center' }}>
-        <Eyebrow>Students join with this code</Eyebrow>
-        {code ? (
-          <>
-            <Row gap={6}>
-              {code.split('').map((ch, i) => (
-                <View key={i} style={{ width: 44, height: 56, borderRadius: radius.md, borderWidth: 2, borderColor: colors.yellow, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-                  <Pixel size={20}>{ch}</Pixel>
-                </View>
-              ))}
-            </Row>
-            <T size={14} color={colors.soft}>
-              Open Quiz Arcade › Join class game ·{' '}
-              <T size={14} weight="bold" color={locked ? colors.red : colors.green}>
-                {locked ? 'Locked' : 'Open'}
+      {classes?.length === 0 && (
+        <Card>
+          <T color={colors.soft}>Create a class first. Then you can start games for everyone in it.</T>
+        </Card>
+      )}
+
+      {cls && (
+        <>
+          {/* Class pick */}
+          <Card style={{ gap: 12 }}>
+            <T size={20} weight="bold">
+              Pick a class
+            </T>
+            <View style={{ gap: 8 }}>
+              {classes!.map((c) => {
+                const on = c.id === cls.id;
+                return (
+                  <Pressable
+                    key={c.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                    onPress={() => {
+                      setPicked(c.id);
+                      setSetId(null);
+                    }}
+                    style={{
+                      padding: 14,
+                      borderRadius: radius.md,
+                      borderWidth: 2,
+                      borderColor: on ? colors.yellow : colors.border,
+                      backgroundColor: colors.bg,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                    }}>
+                    <View style={{ flex: 1 }}>
+                      <T weight={on ? 'bold' : 'regular'}>{c.name}</T>
+                      <T size={13} color={colors.soft}>
+                        {c.section} · {c.student_count} students
+                      </T>
+                    </View>
+                    <CodeTiles code={c.code} size="sm" />
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Card>
+
+          {/* Setup */}
+          <Card style={{ gap: 12 }}>
+            <T size={20} weight="bold">
+              Game setup
+            </T>
+            <Label>Quiz set</Label>
+            {sets.length === 0 ? (
+              <T size={14} color={colors.muted}>
+                This class has no quiz sets yet. Add one on the class page.
               </T>
-            </T>
-            <Row gap={8}>
-              <Button label={locked ? 'Unlock' : 'Lock lobby'} variant="secondary" onPress={() => setLocked(!locked)} />
-              <Button
-                label="Share code"
-                variant="secondary"
-                onPress={() => Share.share({ message: `Join my Quiz Arcade game with code ${code}` })}
-              />
+            ) : (
+              <View style={{ gap: 8 }}>
+                {sets.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: s.id === set?.id }}
+                    onPress={() => setSetId(s.id)}
+                    style={{
+                      padding: 14,
+                      borderRadius: radius.md,
+                      borderWidth: 2,
+                      borderColor: s.id === set?.id ? colors.yellow : colors.border,
+                      backgroundColor: colors.bg,
+                    }}>
+                    <T weight={s.id === set?.id ? 'bold' : 'regular'}>
+                      {s.title} ({s.question_count} questions)
+                    </T>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
+            <Label>Game</Label>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {hostGames.map((g) => (
+                <Chip key={g} label={g} selected={g === game} onPress={() => setGame(g)} accent={colors.cyan} />
+              ))}
+            </View>
+
+            <Toggle label="Unique nicknames and icons only" value={unique} onChange={setUnique} />
+            <Toggle label="Filter bad words in nicknames" value={filter} onChange={setFilter} />
+          </Card>
+
+          {/* Players */}
+          <Card style={{ gap: 12 }} borderColor={live ? colors.cyan : colors.border}>
+            {live && (
+              <View style={{ gap: 4 }}>
+                <Pixel size={12} color={colors.cyan}>
+                  LIVE NOW
+                </Pixel>
+                <T size={14} color={colors.soft}>
+                  {gameLabel(live.game)} is open on every student&apos;s lobby in {cls.name}.
+                </T>
+              </View>
+            )}
+            <Row style={{ justifyContent: 'space-between' }}>
+              <T size={18} weight="bold">
+                Players in class
+              </T>
+              <T weight="bold" color={colors.green}>
+                {members.length} joined
+              </T>
             </Row>
-          </>
-        ) : (
-          <>
-            <Pixel size={14} color={colors.muted}>
-              NO CODE YET
-            </Pixel>
-            <T size={14} color={colors.soft} style={{ textAlign: 'center' }}>
-              Pick a quiz set and game, then press Generate game code.
-            </T>
-          </>
-        )}
-      </Card>
-
-      {/* Setup */}
-      <Card style={{ gap: 12 }}>
-        <T size={20} weight="bold">
-          Game setup
-        </T>
-        <Label>Quiz set</Label>
-        <View style={{ gap: 8 }}>
-          {quizSets.map((s) => (
-            <Pressable
-              key={s}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: s === set }}
-              onPress={() => setSet(s)}
-              style={{ padding: 14, borderRadius: radius.md, borderWidth: 2, borderColor: s === set ? colors.yellow : colors.border, backgroundColor: colors.bg }}>
-              <T weight={s === set ? 'bold' : 'regular'}>{s}</T>
-            </Pressable>
-          ))}
-        </View>
-
-        <Label>Game</Label>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {hostGames.map((g) => (
-            <Chip key={g} label={g} selected={g === game} onPress={() => setGame(g)} accent={colors.cyan} />
-          ))}
-        </View>
-
-        <Label>Code expires in</Label>
-        <Row gap={8}>
-          {expiries.map((e) => (
-            <Chip key={e} label={e} selected={e === expiry} onPress={() => setExpiry(e)} />
-          ))}
-        </Row>
-
-        <Label>Max players</Label>
-        <TextInput
-          value={maxPlayers}
-          onChangeText={(t) => setMaxPlayers(t.replace(/\D/g, ''))}
-          keyboardType="number-pad"
-          style={{ backgroundColor: colors.bg, borderWidth: 2, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14, height: 48, color: colors.text, fontFamily: fonts.medium, fontSize: 15 }}
-        />
-
-        <Toggle label="Unique nicknames and icons only" value={unique} onChange={setUnique} />
-        <Toggle label="Filter bad words in nicknames" value={filter} onChange={setFilter} />
-
-        <Button
-          label={code ? 'Generate a new code' : 'Generate game code'}
-          onPress={() => {
-            setCode(makeCode());
-            setLocked(false);
-          }}
-        />
-      </Card>
-
-      {/* Lobby */}
-      <Card style={{ gap: 12 }}>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <T size={18} weight="bold">
-            Players in lobby
-          </T>
-          <T weight="bold" color={colors.green}>
-            {code ? players.length : 0} joined
-          </T>
-        </Row>
-        {code &&
-          players.map((p) => (
-            <Row key={p.id} style={{ backgroundColor: colors.bg, borderRadius: radius.md, padding: 10 }}>
-              <PlayerIcon pat={p.pat} color={p.color} size={4} />
-              <T style={{ flex: 1 }}>{p.nick}</T>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${p.nick}`}
-                hitSlop={10}
-                onPress={() => setPlayers(players.filter((x) => x.id !== p.id))}>
-                <T color={colors.muted}>✕</T>
-              </Pressable>
-            </Row>
-          ))}
-        <T size={13} color={colors.muted}>
-          Names and icons here are placeholders. In the real system they appear live as students join.
-        </T>
-        <LinkText label="Start game for everyone" onPress={() => {}} />
-      </Card>
+            {members.length === 0 ? (
+              <T size={14} color={colors.muted}>
+                No students yet. Share code {cls.code} so they can join.
+              </T>
+            ) : (
+              members.map((m) => {
+                const ic = iconByName(m.icon);
+                return (
+                  <Row key={m.student_id} style={{ backgroundColor: colors.bg, borderRadius: radius.md, padding: 10 }}>
+                    <PlayerIcon pat={ic.pat} color={ic.color} size={4} />
+                    <T style={{ flex: 1 }}>{m.nickname}</T>
+                  </Row>
+                );
+              })
+            )}
+            <Eyebrow>{live ? 'Switch game or end it' : 'Ready when you are'}</Eyebrow>
+            <Button
+              label={live ? `Restart with ${game}` : 'Start game for everyone'}
+              onPress={() => startLiveGame(db, cls.id, gameIds[game], set?.id ?? null)}
+            />
+            {live && <Button label="End game" variant="secondary" onPress={() => endLiveGame(db, cls.id)} />}
+          </Card>
+        </>
+      )}
     </Screen>
   );
 }
@@ -170,14 +204,5 @@ function Label({ children }: { children: string }) {
     <T size={13} color={colors.soft}>
       {children}
     </T>
-  );
-}
-
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <Row style={{ justifyContent: 'space-between' }}>
-      <T style={{ flex: 1 }}>{label}</T>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.yellow, false: colors.border }} thumbColor={colors.text} />
-    </Row>
   );
 }

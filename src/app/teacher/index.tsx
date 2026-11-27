@@ -1,168 +1,60 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
 
-import { Button, Card, Chip, LinkText, Pixel, ProgressBar, Row, Screen, T, Well } from '@/components/ui';
-import { mostMissed, quizSet } from '@/data/mock';
-import { colors, fonts, radius } from '@/theme';
+import { useUser } from '@/components/auth';
+import { AccountBar, ClassRow } from '@/components/classes';
+import { BrandHeader, Button, Card, CodeTiles, Hint, Pixel, Row, Screen, T } from '@/components/ui';
+import { useLiveQuery } from '@/db/live';
+import { teacherClasses } from '@/db/queries';
+import { colors } from '@/theme';
 
-const sections = ['Quiz sets', 'Host a game', 'Analytics', 'Classes and students', 'Game settings'];
-const difficulties = ['Easy', 'Medium', 'Hard'];
-
-export default function TeacherPanel() {
-  const [section, setSection] = useState('Quiz sets');
-  const [question, setQuestion] = useState('Which gate outputs 1 when inputs are different?');
-  const [options, setOptions] = useState(['OR', 'XOR', 'AND', 'NAND']);
-  const [correct, setCorrect] = useState(1);
-  const [time, setTime] = useState('20');
-  const [difficulty, setDifficulty] = useState('Medium');
-  const [why, setWhy] = useState('XOR gives 1 only when exactly one input is 1.');
-  const [saved, setSaved] = useState(9);
+export default function TeacherClasses() {
+  const user = useUser();
+  const classes = useLiveQuery(`teacher-classes:${user.id}`, (db) => teacherClasses(db, user.id));
 
   return (
     <Screen>
+      <BrandHeader />
+      <AccountBar />
+
       <Row style={{ justifyContent: 'space-between' }}>
-        <LinkText label="‹ Student view" onPress={() => router.back()} />
-        <T size={13} color={colors.muted}>
-          Teacher: [Teacher name]
-        </T>
+        <Pixel size={14}>MY CLASSES</Pixel>
+        {!!classes?.length && (
+          <Button label="Host a game" variant="secondary" style={{ minHeight: 40 }} onPress={() => router.push('/teacher/host')} />
+        )}
       </Row>
-      <Pixel size={16}>TEACHER PANEL</Pixel>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-        {sections.map((s) => (
-          <Chip
-            key={s}
-            label={s}
-            selected={s === section}
-            accent={colors.cyan}
-            onPress={() => (s === 'Host a game' ? router.push('/teacher/host') : setSection(s))}
-          />
-        ))}
-      </ScrollView>
+      {classes?.length === 0 && (
+        <Card style={{ gap: 6 }}>
+          <T size={18} weight="bold">
+            No classes yet
+          </T>
+          <T size={14} color={colors.soft}>
+            Create a class for each subject and section. Students join it once with its code, then see every quiz set
+            you add.
+          </T>
+        </Card>
+      )}
 
-      <Card style={{ gap: 12 }}>
-        <T size={20} weight="bold">
-          Add a question
-        </T>
-        <T size={13} color={colors.muted}>
-          Set: {quizSet.title} · {saved} of {quizSet.questionCount} questions
-        </T>
-
-        <Label>Question</Label>
-        <TextInput value={question} onChangeText={setQuestion} multiline style={[input, { minHeight: 52 }]} placeholderTextColor={colors.dim} />
-
-        <Label>Answers · tap the circle to mark the correct one</Label>
-        {options.map((o, i) => {
-          const on = i === correct;
-          return (
-            <View key={i} style={[input, { flexDirection: 'row', alignItems: 'center', gap: 10, borderColor: on ? colors.green : colors.border, paddingVertical: 0 }]}>
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityState={{ checked: on }}
-                accessibilityLabel={`Mark answer ${String.fromCharCode(65 + i)} correct`}
-                onPress={() => setCorrect(i)}
-                hitSlop={8}
-                style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: on ? colors.green : colors.muted, alignItems: 'center', justifyContent: 'center' }}>
-                {on && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.green }} />}
-              </Pressable>
-              <T weight="bold" color={colors.muted}>
-                {String.fromCharCode(65 + i)}.
-              </T>
-              <TextInput
-                value={o}
-                onChangeText={(t) => setOptions(options.map((x, j) => (j === i ? t : x)))}
-                style={{ flex: 1, height: 48, color: colors.text, fontFamily: fonts.medium, fontSize: 15 }}
-              />
-              {on && (
-                <T size={12} weight="bold" color={colors.green}>
-                  correct
-                </T>
-              )}
-            </View>
-          );
-        })}
-
-        <Row style={{ alignItems: 'flex-start' }}>
-          <View style={{ flex: 1, gap: 6 }}>
-            <Label>Time limit (sec)</Label>
-            <TextInput value={time} onChangeText={(t) => setTime(t.replace(/\D/g, ''))} keyboardType="number-pad" style={input} />
-          </View>
-          <View style={{ flex: 2, gap: 6 }}>
-            <Label>Difficulty</Label>
-            <Row gap={6}>
-              {difficulties.map((d) => (
-                <Chip key={d} label={d} selected={d === difficulty} onPress={() => setDifficulty(d)} />
-              ))}
-            </Row>
-          </View>
-        </Row>
-
-        <Label>Explanation shown after</Label>
-        <TextInput value={why} onChangeText={setWhy} multiline style={[input, { minHeight: 52 }]} />
-
-        <Row>
-          <Button label="Import from CSV" variant="secondary" style={{ flex: 1 }} />
-          <Button label="Save question" variant="outline" style={{ flex: 1 }} onPress={() => setSaved((n) => Math.min(quizSet.questionCount, n + 1))} />
-        </Row>
-        <Button label="Finish quiz and generate code" onPress={() => router.push('/teacher/host')} />
-      </Card>
-
-      <Card style={{ gap: 12 }}>
-        <T size={20} weight="bold">
-          Most missed questions
-        </T>
-        <T size={13} color={colors.muted}>
-          Bars show sample layout only. Real values come from student play data.
-        </T>
-        {mostMissed.map((m) => (
-          <View key={m.label} style={{ gap: 6 }}>
+      {classes?.map((c) => (
+        <ClassRow
+          key={c.id}
+          title={c.name}
+          meta={`${c.subject} · ${c.section}`}
+          label={`Open ${c.name}, code ${c.code}, ${c.student_count} students`}
+          onPress={() => router.push({ pathname: '/teacher/class/[id]', params: { id: String(c.id) } })}
+          footer={
             <Row style={{ justifyContent: 'space-between' }}>
-              <T size={14}>{m.label}</T>
-              <T size={13} color={colors.soft}>
-                [x%] wrong
+              <CodeTiles code={c.code} size="sm" />
+              <T size={13} weight="bold" color={c.accepting ? colors.green : colors.muted}>
+                {c.student_count} / {c.max_students} students{c.accepting ? '' : ' · closed'}
               </T>
             </Row>
-            <ProgressBar value={m.pct} color={colors.orange} height={10} />
-          </View>
-        ))}
-        <Row style={{ alignItems: 'stretch' }}>
-          {[
-            ['Students played', '[x]'],
-            ['Class average', '[x%]'],
-            ['Most played', '[game]'],
-          ].map(([k, v]) => (
-            <Well key={k} style={{ flex: 1, gap: 2, padding: 10 }}>
-              <T size={11} color={colors.muted}>
-                {k}
-              </T>
-              <T size={17} weight="bold">
-                {v}
-              </T>
-            </Well>
-          ))}
-        </Row>
-      </Card>
+          }
+        />
+      ))}
+
+      <Button label="Create class" onPress={() => router.push('/teacher/create')} />
+      <Hint>One code per class, not per quiz. Students keep it for the whole term.</Hint>
     </Screen>
   );
 }
-
-function Label({ children }: { children: string }) {
-  return (
-    <T size={13} color={colors.soft}>
-      {children}
-    </T>
-  );
-}
-
-const input = {
-  backgroundColor: colors.bg,
-  borderWidth: 2,
-  borderColor: colors.border,
-  borderRadius: radius.md,
-  paddingHorizontal: 14,
-  paddingVertical: 12,
-  color: colors.text,
-  fontFamily: fonts.medium,
-  fontSize: 15,
-};

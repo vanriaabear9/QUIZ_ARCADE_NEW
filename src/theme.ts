@@ -34,3 +34,10 @@ export const fonts = {
 export const radius = { sm: 8, md: 10, lg: 14, xl: 16, pill: 999 } as const;
 
 export const space = { gutter: 16, gap: 12 } as const;
+
+/** Shared options for every Stack navigator: no native header, dark background. */
+export const stackOptions = {
+  headerShown: false,
+  contentStyle: { backgroundColor: colors.bg },
+  animation: 'slide_from_right',
+} as const;

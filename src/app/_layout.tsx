@@ -6,11 +6,14 @@ import {
   useFonts,
 } from '@expo-google-fonts/space-grotesk';
 import { Stack } from 'expo-router';
+import { SQLiteProvider } from 'expo-sqlite';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
-import { colors } from '@/theme';
+import { AuthProvider } from '@/components/auth';
+import { DATABASE_NAME, migrateDbIfNeeded } from '@/db/schema';
+import { stackOptions } from '@/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -29,15 +32,11 @@ export default function RootLayout() {
   if (!loaded && !error) return null;
 
   return (
-    <>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
-          animation: 'slide_from_right',
-        }}
-      />
-    </>
+    <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
+      <AuthProvider>
+        <StatusBar style="light" />
+        <Stack screenOptions={stackOptions} />
+      </AuthProvider>
+    </SQLiteProvider>
   );
 }
